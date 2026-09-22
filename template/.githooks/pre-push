@@ -13,6 +13,14 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# git exports GIT_DIR (and friends) to hooks. Flutter finds its own version by
+# running git inside the SDK, so with GIT_DIR set it reads *this* repo instead
+# and reports 0.0.0-unknown — `pub get` then fails on the SDK constraint. In
+# the main checkout GIT_DIR is the relative ".git" and happens to resolve to
+# the SDK repo; in a worktree it is absolute and breaks. We are already at the
+# repo root, so git still finds it without these.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+
 # --- Configure -------------------------------------------------------------
 # Keep in sync with .github/workflows/ci.yaml.
 DEFAULT_BRANCH=main

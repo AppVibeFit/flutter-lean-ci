@@ -125,6 +125,15 @@ dependencies. The Very Good workflow runs `very_good packages get --recursive`
 first; the hook does the same. A hook that only runs `flutter pub get` passes
 on your main checkout and breaks everywhere else.
 
+**Flutter reports version `0.0.0-unknown` inside the hook — only in a
+worktree.** git exports `GIT_DIR` to hooks, and Flutter finds its own version
+by running git inside the SDK. With `GIT_DIR` set, that git reads *your* repo,
+and `pub get` fails on the SDK constraint ("Try using the Flutter SDK
+version …"), which looks like a version mismatch. In the main checkout
+`GIT_DIR` is the relative `.git`, which happens to resolve to the SDK's own
+repo, so it works there and breaks in `git worktree`s. The hook unsets the
+`GIT_*` variables after `cd`-ing to the repo root.
+
 **Path filters don't apply to tag pushes.** That's a feature here: a `v*` tag
 always runs the packages suite, even though its commit touched nothing under
 `packages/`.
