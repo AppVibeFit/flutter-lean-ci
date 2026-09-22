@@ -1,0 +1,50 @@
+name: ci
+
+# Split the concurrency group by whether this run will do work. Without the
+# run/skip suffix, a push and a `run-ci` label landing at the same time race:
+# the run that is going to skip cancels the run that is going to test.
+# Keep this condition identical to the job's `if` below.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.ref }}-${{
+    (github.event_name != 'pull_request' ||
+    github.event.pull_request.user.login == 'dependabot[bot]' ||
+    contains(github.event.pull_request.labels.*.name, 'run-ci'))
+    && 'run' || 'skip' }}
+  cancel-in-progress: true
+
+# The local pre-push hook (.githooks/pre-push) gates PRs, so CI runs:
+#   - after each merge to main (catches what slipped past the hook, same day);
+#   - on release tags (v*), before shipping;
+#   - on Dependabot PRs, which never pass through anyone's hook;
+#   - on any PR labeled `run-ci` (risky change, or pushed with --no-verify);
+#   - on demand.
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
+    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/flutter_package.yml@v1
+    with:
+      # Pin to the Flutter version you build with (e.g. "3.44.0"); empty means
+      # latest stable. If CI fails at `pub global activate very_good_cli`,
+      # the workflow's CLI needs a newer Dart than your pin — pin the workflow
+      # too (@v1.x.y) until you bump Flutter.
+      flutter_version: ""
+      run_bloc_lint: true
+      min_coverage: 65
+      coverage_excludes: "**/*.g.dart **/l10n/gen/** **/main_*.dart **/bootstrap.dart **/firebase_options*.dart"

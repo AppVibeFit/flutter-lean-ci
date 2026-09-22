@@ -1,0 +1,54 @@
+name: packages
+
+# See ci.yaml for why the group carries run/skip.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.ref }}-${{
+    (github.event_name != 'pull_request' ||
+    github.event.pull_request.user.login == 'dependabot[bot]' ||
+    contains(github.event.pull_request.labels.*.name, 'run-ci'))
+    && 'run' || 'skip' }}
+  cancel-in-progress: true
+
+# Local packages (packages/*) in their own workflow, filtered by path: packages
+# don't import the app's lib/, so a change that leaves packages/ alone cannot
+# break them. Path filters are not evaluated for tag pushes, so release tags
+# always run this.
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "packages/**"
+      - ".github/workflows/packages.yaml"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "packages/**"
+      - ".github/workflows/packages.yaml"
+  workflow_dispatch:
+
+jobs:
+  packages:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          # Same pin as ci.yaml.
+          channel: stable
+          cache: true
+      - name: Install very_good_cli
+        run: dart pub global activate very_good_cli
+      - name: Resolve package dependencies (recursive)
+        working-directory: packages
+        run: very_good packages get --recursive
+      - name: Run package tests (recursive)
+        working-directory: packages
+        run: very_good test --recursive

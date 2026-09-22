@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Local PR gate. CI only runs after merge, on release tags, on Dependabot PRs
+# and on PRs labeled `run-ci` — so this hook is what stands in front of a PR.
+# It mirrors VeryGoodOpenSource/very_good_workflows' flutter_package.yml:
+#
+#   resolve deps (recursive) · format · analyze · bloc lint · tests with a
+#   coverage gate · local package tests (only when packages/ changed)
+#
+# Install once per clone (worktrees share it):
+#   git config core.hooksPath .githooks
+#
+# Pushes whose commits only touch docs skip the checks, same as the CI.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+# --- Configure -------------------------------------------------------------
+# Keep in sync with .github/workflows/ci.yaml.
+DEFAULT_BRANCH=main
+MIN_COVERAGE=65
+COVERAGE_EXCLUDES="**/*.g.dart **/l10n/gen/** **/main_*.dart **/bootstrap.dart **/firebase_options*.dart"
+RUN_BLOC_LINT=true             # needs bloc_tools in dev_dependencies
+PACKAGES_DIR=packages          # local packages; "" if you have none
+DOCS_ONLY='^(docs/|\.claude/|[^/]+\.md$)'
+# ---------------------------------------------------------------------------
+
+base=$(git merge-base HEAD "origin/$DEFAULT_BRANCH" 2>/dev/null || true)
+head=$(git rev-parse HEAD)
+
+run_all=true
+if [ -n "$base" ] && [ "$base" != "$head" ]; then
+  run_all=false
+  changed=$(git diff --name-only "$base" "$head")
+  code=$(printf '%s\n' "$changed" | grep -vE "$DOCS_ONLY" || true)
+  if [ -z "$code" ]; then
+    echo "==> [pre-push] Only docs changed — skipping checks."
+    exit 0
+  fi
+  if [ -n "$PACKAGES_DIR" ]; then
+    packages_changed=$(printf '%s\n' "$changed" | grep -E "^$PACKAGES_DIR/" || true)
+  fi
+fi
+
+step() { echo ""; echo "==> [pre-push] $*"; }
+
+# Same as the CI: resolve every package, not just the root. `flutter analyze`
+# also reads $PACKAGES_DIR/*/test, which needs each package's dev
+# dependencies — without this, a fresh clone or worktree fails analysis.
+step "resolve dependencies (recursive)"
+very_good packages get --recursive
+
+step "dart format (lib test)"
+dart format --set-exit-if-changed lib test
+
+step "flutter analyze"
+flutter analyze
+
+if [ "$RUN_BLOC_LINT" = true ]; then
+  step "bloc lint"
+  dart run bloc_tools:bloc lint .
+fi
+
+step "tests with coverage (min ${MIN_COVERAGE}%)"
+very_good test \
+  --coverage \
+  --min-coverage "$MIN_COVERAGE" \
+  --exclude-coverage "$COVERAGE_EXCLUDES" \
+  --test-randomize-ordering-seed random
+
+if [ -n "$PACKAGES_DIR" ] && [ -d "$PACKAGES_DIR" ]; then
+  if [ "$run_all" = true ] || [ -n "${packages_changed:-}" ]; then
+    step "package tests ($PACKAGES_DIR/ changed)"
+    (cd "$PACKAGES_DIR" && very_good test --recursive)
+  else
+    step "$PACKAGES_DIR/ unchanged — skipping package tests"
+  fi
+fi
+
+echo ""
+echo "==> [pre-push] All checks passed. Pushing ..."
