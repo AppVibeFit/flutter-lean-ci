@@ -1,0 +1,99 @@
+name: flutter-ci
+
+# Reusable: the app suite. Same steps as VeryGoodOpenSource/very_good_workflows'
+# flutter_package.yml — resolve deps (recursive), format, analyze, bloc lint,
+# tests with a coverage floor — and the same steps as template/.githooks/pre-push.
+#
+# Why not call flutter_package.yml directly: a reusable workflow can't take
+# its `uses:` ref from an input, and that workflow hardcodes a very_good_cli
+# version that may need a newer Dart than your pinned Flutter. Here both
+# versions are inputs.
+#
+# Only `workflow_call`: nothing here runs on this repo's own pushes.
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        description: "Flutter version (e.g. 3.44.0). Empty = latest on the channel."
+        type: string
+        default: ""
+      flutter_channel:
+        type: string
+        default: "stable"
+      very_good_cli_version:
+        description: "very_good_cli version (e.g. 1.4.0). Empty = latest — pin it if you pin Flutter."
+        type: string
+        default: ""
+      min_coverage:
+        type: number
+        default: 100
+      coverage_excludes:
+        description: "Space-separated globs excluded from coverage."
+        type: string
+        default: ""
+      run_bloc_lint:
+        type: boolean
+        default: true
+      format_directories:
+        type: string
+        default: "lib test"
+      test_concurrency:
+        type: string
+        default: "4"
+      show_uncovered:
+        type: boolean
+        default: false
+      working_directory:
+        type: string
+        default: "."
+      runs_on:
+        type: string
+        default: "ubuntu-latest"
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runs_on }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          channel: ${{ inputs.flutter_channel }}
+          cache: true
+          cache-key: flutter-:os:-:channel:-:version:-:arch:-:hash:-${{ hashFiles('**/pubspec.lock') }}
+
+      - name: Install very_good_cli
+        run: dart pub global activate very_good_cli ${{ inputs.very_good_cli_version }}
+
+      - name: Resolve dependencies (recursive)
+        run: very_good packages get --recursive
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed ${{ inputs.format_directories }}
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Bloc lint
+        if: ${{ inputs.run_bloc_lint }}
+        run: |
+          flutter pub global activate bloc_tools
+          bloc lint .
+
+      - name: Tests with coverage
+        env:
+          COVERAGE_EXCLUDES: ${{ inputs.coverage_excludes }}
+        run: >-
+          very_good test
+          -j ${{ inputs.test_concurrency }}
+          --optimization
+          --coverage
+          --min-coverage ${{ inputs.min_coverage }}
+          ${{ inputs.coverage_excludes != '' && '--exclude-coverage "$COVERAGE_EXCLUDES"' || '' }}
+          --report-on lib
+          ${{ inputs.show_uncovered && '--show-uncovered' || '' }}
+          --test-randomize-ordering-seed random

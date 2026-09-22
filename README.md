@@ -4,9 +4,10 @@ Cut GitHub Actions minutes on a Flutter repo without shipping less-tested
 code: a **pre-push hook gates the PR**, and **CI runs once per merge** instead
 of on every push.
 
-Built for apps using [Very Good Workflows](https://github.com/VeryGoodOpenSource/very_good_workflows)
-(`flutter_package.yml`) and local packages under `packages/`. Extracted from
-the [Vibe Fit](https://appvibefit.com) app, where it is in daily use.
+Built for [Very Good](https://github.com/VeryGoodOpenSource/very_good_workflows)-style
+Flutter apps (format, analyze, bloc lint, coverage floor) with local packages
+under `packages/`. The [Vibe Fit](https://appvibefit.com) app runs its CI on
+these exact workflows.
 
 ## Why
 
@@ -49,13 +50,44 @@ packages suite ran on PRs that could not have broken it.
 - **`packages/` has its own workflow**, filtered by path. Local packages don't
   import the app's `lib/`, so a PR that doesn't touch them can't break them.
 
+## What's in here
+
+| Path | What it is |
+|---|---|
+| [`.github/workflows/flutter-ci.yml`](.github/workflows/flutter-ci.yml) | Reusable workflow: the app suite (deps, format, analyze, bloc lint, tests + coverage) |
+| [`.github/workflows/packages.yml`](.github/workflows/packages.yml) | Reusable workflow: local packages' tests, recursive |
+| [`template/.github/workflows/`](template/.github/workflows) | Callers to copy: triggers, the `run-ci` / Dependabot condition, the concurrency group |
+| [`template/.githooks/pre-push`](template/.githooks/pre-push) | The hook — same steps as `flutter-ci.yml`, run locally |
+
+The triggers and the "should this run?" condition live in **your** repo
+(GitHub doesn't let a reusable workflow carry triggers); the steps live here.
+
+**Why not call Very Good's `flutter_package.yml` directly?** A reusable
+workflow can't take its `uses:` ref from an input, and that workflow pins a
+`very_good_cli` version that can require a newer Dart than your Flutter
+ships. `flutter-ci.yml` runs the same steps with **both versions as inputs**.
+
+### Versions
+
+`@v1` moves with non-breaking changes. Pin `@v1.0.0` (or a commit SHA) if you
+want nothing to change under you.
+
+### Inputs
+
+`flutter-ci.yml`: `flutter_version`, `flutter_channel` (`stable`),
+`very_good_cli_version`, `min_coverage` (100), `coverage_excludes`,
+`run_bloc_lint` (true), `format_directories` (`lib test`), `test_concurrency`
+(4), `show_uncovered` (false), `working_directory` (`.`), `runs_on`
+(`ubuntu-latest`).
+
+`packages.yml`: `flutter_version`, `flutter_channel`, `very_good_cli_version`,
+`packages_directory` (`packages`), `runs_on`.
+
 ## Setup
 
 1. Copy the contents of [`template/`](template) into your repo root
    (`.githooks/pre-push` and `.github/workflows/*`). If you already have a CI
-   workflow for PRs, replace it with `ci.yaml`. The files live under
-   `template/` so they don't run in this repo, which has no Flutter project.
-   From your repo root:
+   workflow for PRs, replace it with `ci.yaml`. From your repo root:
    ```bash
    git clone --depth 1 https://github.com/AppVibeFit/flutter-lean-ci /tmp/flutter-lean-ci
    cp -R /tmp/flutter-lean-ci/template/. .

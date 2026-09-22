@@ -1,0 +1,23 @@
+name: lint
+
+# Checks this repo's own files: the reusable workflows, the caller templates
+# and the hook.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: actionlint
+        run: |
+          bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color .github/workflows/*.yml template/.github/workflows/*.yaml
+
+      - name: shellcheck
+        run: shellcheck template/.githooks/pre-push
