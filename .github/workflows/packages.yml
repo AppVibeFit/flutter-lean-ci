@@ -1,0 +1,51 @@
+name: packages
+
+# Reusable: tests for local packages (packages/* by default), recursively.
+# Pair it with a `paths:` filter in the caller so it only runs when a package
+# can have changed.
+#
+# Only `workflow_call`: nothing here runs on this repo's own pushes.
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        description: "Flutter version (e.g. 3.44.0). Empty = latest on the channel."
+        type: string
+        default: ""
+      flutter_channel:
+        type: string
+        default: "stable"
+      very_good_cli_version:
+        description: "very_good_cli version (e.g. 1.4.0). Empty = latest — pin it if you pin Flutter."
+        type: string
+        default: ""
+      packages_directory:
+        type: string
+        default: "packages"
+      runs_on:
+        type: string
+        default: "ubuntu-latest"
+
+jobs:
+  packages:
+    runs-on: ${{ inputs.runs_on }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.packages_directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          channel: ${{ inputs.flutter_channel }}
+          cache: true
+
+      - name: Install very_good_cli
+        run: dart pub global activate very_good_cli ${{ inputs.very_good_cli_version }}
+
+      - name: Resolve dependencies (recursive)
+        run: very_good packages get --recursive
+
+      - name: Tests (recursive)
+        run: very_good test --recursive

@@ -36,19 +36,9 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'dependabot[bot]' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          # Same pin as ci.yaml.
-          channel: stable
-          cache: true
-      - name: Install very_good_cli
-        run: dart pub global activate very_good_cli
-      - name: Resolve package dependencies (recursive)
-        working-directory: packages
-        run: very_good packages get --recursive
-      - name: Run package tests (recursive)
-        working-directory: packages
-        run: very_good test --recursive
+    uses: AppVibeFit/flutter-lean-ci/.github/workflows/packages.yml@v1
+    with:
+      # Same pins as ci.yaml.
+      flutter_version: ""
+      very_good_cli_version: ""
+      packages_directory: packages
