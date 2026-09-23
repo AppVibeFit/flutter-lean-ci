@@ -134,6 +134,13 @@ version …"), which looks like a version mismatch. In the main checkout
 repo, so it works there and breaks in `git worktree`s. The hook unsets the
 `GIT_*` variables after `cd`-ing to the repo root.
 
+**Deleting a remote branch ran the whole suite.** `git push origin --delete
+x` runs `pre-push` too. The hook used to decide what to check from `HEAD`, not
+from what was being pushed — so a deletion, made while on some unrelated
+branch, ran every check against that branch. git passes the pushed refs on
+stdin; a deletion has an all-zero local sha, and the hook now exits early
+when every ref is a deletion.
+
 **Path filters don't apply to tag pushes.** That's a feature here: a `v*` tag
 always runs the packages suite, even though its commit touched nothing under
 `packages/`.
